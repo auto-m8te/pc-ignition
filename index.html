@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#121314">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="referrer" content="no-referrer">
+<title>PC Ignition</title>
+<style>
+  :root {
+    --bg: #070708;
+    --panel: #151617;
+    --metal-hi: #4a4c50;
+    --metal-lo: #18191b;
+    --hazard: #f2b705;
+    /* cap colour: red = PC off / unconfirmed, green = PC confirmed up */
+    --cap: #d81e1e;
+    --cap-hi: #ff5a4a;
+    --cap-lo: #6e0b0b;
+    --cap-edge: #4a0707;
+    --cap-glow: 255, 60, 40;
+    --ok: #3ddc84;
+    --warn: #f2b705;
+    --bad: #ff4d4d;
+    --text: #c9cbcf;
+    --dim: #6c6f75;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background:
+      radial-gradient(ellipse at 50% 45%, #18191b 0%, var(--bg) 65%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* ---------- status readouts ---------- */
+  .readout {
+    position: fixed; left: 0; right: 0;
+    text-align: center; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    padding: 0 16px;
+  }
+  .readout.top { top: max(18px, env(safe-area-inset-top)); color: var(--dim); }
+  .readout.bottom { bottom: max(28px, env(safe-area-inset-bottom)); min-height: 3em; }
+  .led {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 8px; vertical-align: 1px; background: var(--dim);
+  }
+  .led.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .led.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  .led.bad { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  .msg { font-size: 15px; letter-spacing: .2em; color: var(--text); }
+  .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); } .msg.warn { color: var(--warn); }
+  .sub { margin-top: 6px; font-size: 11px; color: var(--dim); letter-spacing: .08em; text-transform: none; }
+
+  /* ---------- the switch ---------- */
+  .housing {
+    --size: min(72vw, 300px);
+    position: relative; width: var(--size); height: var(--size);
+    perspective: 900px;
+  }
+  /* hazard-striped base plate */
+  .plate {
+    position: absolute; inset: 0; border-radius: 18px;
+    background: repeating-linear-gradient(-45deg, var(--hazard) 0 18px, #111 18px 36px);
+    box-shadow: 0 40px 90px rgba(0,0,0,.95), 0 12px 24px rgba(0,0,0,.8), inset 0 0 0 2px rgba(0,0,0,.5);
+  }
+  .housing.on {
+    --cap: #1fae4b;
+    --cap-hi: #6dff9a;
+    --cap-lo: #0a4a1e;
+    --cap-edge: #063516;
+    --cap-glow: 60, 230, 120;
+  }
+  .plate::after {
+    content: ""; position: absolute; inset: 9%; border-radius: 12px;
+    background: linear-gradient(160deg, var(--metal-hi), var(--metal-lo));
+    box-shadow: inset 0 2px 3px rgba(255,255,255,.12), inset 0 -6px 14px rgba(0,0,0,.7);
+  }
+  .screw {
+    position: absolute; width: 5%; height: 5%; border-radius: 50%; z-index: 1;
+    background: radial-gradient(circle at 35% 35%, #9a9ca0, #2a2b2e);
+  }
+  .screw::after {
+    content: ""; position: absolute; left: 15%; right: 15%; top: 45%; height: 10%;
+    background: #1a1a1a; transform: rotate(35deg);
+  }
+  .screw.a { left: 12%; top: 12%; } .screw.b { right: 12%; top: 12%; }
+  .screw.c { left: 12%; bottom: 12%; } .screw.d { right: 12%; bottom: 12%; }
+
+  .label {
+    position: absolute; left: 0; right: 0; bottom: 11%; z-index: 1;
+    text-align: center; font-size: calc(var(--size) * .045); font-weight: 700;
+    letter-spacing: .3em; color: #d8dadd; text-shadow: 0 1px 0 #000;
+  }
+
+  /* recessed well + red cap */
+  .well {
+    position: absolute; left: 50%; top: 46%; width: 50%; height: 50%;
+    transform: translate(-50%, -50%); border-radius: 50%; z-index: 1;
+    background: radial-gradient(circle, #0b0b0c 55%, #2b2c2f 72%, #0e0e0f 100%);
+    box-shadow: inset 0 6px 14px rgba(0,0,0,.9);
+  }
+  .cap {
+    position: absolute; inset: 11%; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+    background: radial-gradient(circle at 38% 30%, var(--cap-hi), var(--cap) 45%, var(--cap-lo) 100%);
+    box-shadow: 0 9px 0 var(--cap-edge), 0 14px 18px rgba(0,0,0,.6), inset 0 -4px 10px rgba(0,0,0,.4);
+    transform: translateY(-6px);
+    transition: transform 90ms ease-out, box-shadow 90ms ease-out, filter 200ms, background 400ms;
+  }
+  .cap:disabled { cursor: default; }
+  .cap.pressed {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 var(--cap-edge), 0 2px 4px rgba(0,0,0,.6), inset 0 4px 10px rgba(0,0,0,.5);
+  }
+  .armed .cap { filter: drop-shadow(0 0 14px rgba(var(--cap-glow), .55)); animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { filter: drop-shadow(0 0 26px rgba(var(--cap-glow), .9)); } }
+  /* mouse hover glow — through the clear cover too */
+  @media (hover: hover) {
+    .housing:hover .cap { filter: drop-shadow(0 0 22px rgba(var(--cap-glow), .8)) brightness(1.12); }
+    .housing:hover .lid { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.4), 0 0 18px rgba(var(--cap-glow), .25), 0 10px 20px rgba(0,0,0,.35); }
+  }
+
+  /* hinged clear polycarbonate safety lid */
+  .lid {
+    position: absolute; left: 21%; top: 17%; width: 58%; height: 60%; z-index: 3;
+    border: 0; padding: 0; cursor: pointer; border-radius: 14px 14px 22px 22px;
+    background:
+      linear-gradient(115deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.22) 38%, rgba(255,255,255,0) 46%),
+      linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.03) 30%, rgba(255,255,255,.06));
+    box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.28), 0 10px 20px rgba(0,0,0,.35);
+    transform-origin: 50% 0%;
+    transform: rotateX(0deg);
+    transition: transform 380ms cubic-bezier(.3,1.4,.5,1), box-shadow 200ms;
+  }
+  .lid::before { /* hinge barrel */
+    content: ""; position: absolute; left: 8%; right: 8%; top: -7%; height: 9%;
+    border-radius: 6px; background: linear-gradient(180deg, #8a8c90, #2d2e31);
+  }
+  .lid::after { /* moulded "lift" tab */
+    content: "LIFT"; position: absolute; left: 30%; right: 30%; bottom: -6%; height: 11%;
+    border-radius: 0 0 8px 8px; background: rgba(255,255,255,.16);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+    font: 700 calc(var(--size) * .032) var(--mono); letter-spacing: .2em;
+    color: rgba(255,255,255,.75); display: grid; place-items: center;
+  }
+  .armed .lid { transform: rotateX(118deg); }
+  .armed .lid::after { content: ""; }
+
+  /* ---------- setup screen ---------- */
+  .setup {
+    width: min(92vw, 440px); padding: 24px; border-radius: 14px;
+    background: var(--panel); box-shadow: 0 20px 50px rgba(0,0,0,.5);
+  }
+  .setup h1 { font-size: 14px; letter-spacing: .25em; margin: 0 0 6px; color: var(--hazard); }
+  .setup p { font-size: 12px; color: var(--dim); line-height: 1.5; margin: 0 0 16px; }
+  .setup label { display: block; font-size: 11px; letter-spacing: .12em; margin: 14px 0 6px; text-transform: uppercase; }
+  .setup input {
+    width: 100%; padding: 11px 12px; border-radius: 8px; border: 1px solid #333;
+    background: #0e0f10; color: var(--text); font: 13px var(--mono); user-select: text;
+  }
+  .setup input:focus { outline: 2px solid var(--hazard); outline-offset: 1px; }
+  .setup button {
+    margin-top: 20px; width: 100%; padding: 13px; border: 0; border-radius: 8px;
+    background: var(--hazard); color: #111; font: 700 13px var(--mono); letter-spacing: .2em; cursor: pointer;
+  }
+  .setup .err { color: var(--bad); font-size: 12px; margin-top: 10px; min-height: 1em; }
+  [hidden] { display: none !important; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lid, .cap { transition: none; }
+    .armed .cap { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- one-time setup: paste the old wake link -->
+<form class="setup" id="setup" hidden>
+  <h1>PC IGNITION · SETUP</h1>
+  <p>Paste your ntfy wake link once. It's stored on this device only and never sent anywhere except ntfy.sh.</p>
+  <label for="wakeLink">Wake link</label>
+  <input id="wakeLink" placeholder="https://ntfy.sh/wol-…/publish?message=wake-…" autocomplete="off" required>
+  <label for="statusTopic">Status topic (optional)</label>
+  <input id="statusTopic" placeholder="wolstat-…" autocomplete="off">
+  <button type="submit">ARM PANEL</button>
+  <div class="err" id="setupErr"></div>
+</form>
+
+<!-- the switch -->
+<div id="panel" hidden>
+  <div class="readout top" id="board"><span class="led"></span>board · checking</div>
+
+  <div class="housing" id="housing">
+    <div class="plate"></div>
+    <div class="screw a"></div><div class="screw b"></div>
+    <div class="screw c"></div><div class="screw d"></div>
+    <div class="well"><button class="cap" id="cap" aria-label="Wake PC" disabled></button></div>
+    <button class="lid" id="lid" aria-label="Lift safety cover"></button>
+    <div class="label">PC POWER</div>
+  </div>
+
+  <div class="readout bottom">
+    <div class="msg" id="msg">LIFT COVER</div>
+    <div class="sub" id="sub"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const NTFY = "https://ntfy.sh";
+  const STORE_KEY = "pc-ignition";
+  const LID_AUTOCLOSE_MS = 6000;
+  const HEARTBEAT_STALE_MIN = 20;   // firmware posts every 15 min
+  const WAKE_TIMEOUT_MS = 4.5 * 60 * 1000; // firmware probes for 3.5 min
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- config: URL fragment (never sent to a server) > localStorage ----------
+  function parseWakeLink(link) {
+    let url;
+    try { url = new URL(link.trim()); } catch { throw new Error("That's not a link — paste the full https://ntfy.sh/… URL"); }
+    const parts = url.pathname.split("/").filter(Boolean);
+    const topic = parts[0];
+    const message = url.searchParams.get("message") || url.searchParams.get("m");
+    if (!topic || !message) throw new Error("Link needs a topic and ?message=");
+    return { topic, message };
+  }
+
+  function loadConfig() {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    if (hash.get("w") && hash.get("m")) {
+      const cfg = { topic: hash.get("w"), message: hash.get("m"), status: hash.get("s") || "" };
+      saveConfig(cfg);
+      history.replaceState(null, "", location.pathname); // keep secret out of the address bar
+      return cfg;
+    }
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch { return null; }
+  }
+
+  function saveConfig(cfg) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(cfg)); } catch { /* private mode */ }
+  }
+
+  // ---------- readouts ----------
+  function say(text, tone = "", sub = "") {
+    $("msg").textContent = text;
+    $("msg").className = "msg " + tone;
+    $("sub").textContent = sub;
+  }
+
+  function setBoard(tone, text) {
+    $("board").innerHTML = "";
+    const led = document.createElement("span");
+    led.className = "led " + tone;
+    $("board").append(led, document.createTextNode(text));
+  }
+
+  function minutesAgo(unixSec) {
+    return Math.round((Date.now() / 1000 - unixSec) / 60);
+  }
+
+  // PC power state as reported by firmware v3: "PC on"/"PC off" on change, and
+  // "pc=on|off" inside every heartbeat. Returns null when a message says nothing.
+  function pcStateFrom(e) {
+    if (e.title === "PC on" || e.title === "PC awake") return true;
+    if (e.title === "PC off" || e.title === "PC wake FAILED") return false;
+    const m = /pc=(on|off)/.exec(e.message || "");
+    return m ? m[1] === "on" : null;
+  }
+
+  // One stream for the whole visit: replays the last 2h (so the state is known on open),
+  // then stays live so the board light and button colour track reality.
+  function watchStatus(cfg) {
+    if (!cfg.status) { setBoard("", "board · no status topic"); return; }
+    let lastSeen = null;
+    const render = () => {
+      if (lastSeen === null) { setBoard("bad", "board · silent 2h+"); return; }
+      const mins = minutesAgo(lastSeen);
+      const tone = mins <= HEARTBEAT_STALE_MIN ? "ok" : "bad";
+      setBoard(tone, `board · ${tone === "ok" ? "alive" : "silent"} · ${mins}m ago`);
+    };
+    const es = new EventSource(`${NTFY}/${encodeURIComponent(cfg.status)}/sse?since=2h`);
+    es.onopen = () => setTimeout(render, 1500); // let the 2h replay land first
+    es.onerror = () => { if (lastSeen === null) setBoard("warn", "board · can't reach ntfy"); };
+    es.onmessage = (ev) => {
+      let e;
+      try { e = JSON.parse(ev.data); } catch { return; }
+      if (e.event !== "message") return;
+      lastSeen = Math.max(lastSeen || 0, e.time);
+      const on = pcStateFrom(e);
+      if (on !== null) $("housing").classList.toggle("on", on);
+      render();
+    };
+    setInterval(render, 30000);
+  }
+
+  // ---------- wake + confirmation ----------
+  function listenForVerdict(cfg, sinceSec) {
+    if (!cfg.status) return;
+    const es = new EventSource(`${NTFY}/${encodeURIComponent(cfg.status)}/sse?since=${sinceSec}`);
+    const timer = setTimeout(() => {
+      es.close();
+      say("NO VERDICT", "warn", "Board never reported back. Check the status feed.");
+    }, WAKE_TIMEOUT_MS);
+    es.onmessage = (ev) => {
+      let e;
+      try { e = JSON.parse(ev.data); } catch { return; }
+      if (e.event !== "message") return;
+      if (e.title === "PC awake") {
+        clearTimeout(timer); es.close();
+        $("housing").classList.add("on");
+        say("PC IS UP", "ok", e.message);
+      } else if (e.title === "PC wake FAILED") {
+        clearTimeout(timer); es.close();
+        $("housing").classList.remove("on");
+        say("WAKE FAILED", "bad", e.message);
+      }
+    };
+  }
+
+  async function fire(cfg) {
+    const sinceSec = Math.floor(Date.now() / 1000) - 5;
+    say("SENDING…");
+    try {
+      const res = await fetch(`${NTFY}/${encodeURIComponent(cfg.topic)}`, { method: "POST", body: cfg.message });
+      if (!res.ok) throw new Error(`ntfy HTTP ${res.status}`);
+      if (navigator.vibrate) navigator.vibrate([40, 60, 120]);
+      say("WAKE SENT", "", cfg.status ? "Waiting for the PC to answer (up to ~3 min)…" : "Give it ~30s, then open Moonlight.");
+      listenForVerdict(cfg, sinceSec);
+    } catch (err) {
+      say("SEND FAILED", "bad", String(err.message || err));
+    }
+  }
+
+  // ---------- switch mechanics: click 1 lifts the lid, click 2 presses the button ----------
+  function startPanel(cfg) {
+    $("panel").hidden = false;
+    const housing = $("housing"), lid = $("lid"), cap = $("cap");
+    let closeTimer = null;
+
+    const closeLid = () => {
+      housing.classList.remove("armed");
+      cap.disabled = true;
+      lid.setAttribute("aria-label", "Lift safety cover");
+    };
+
+    lid.addEventListener("click", () => {
+      housing.classList.add("armed");
+      cap.disabled = false;
+      say("ARMED", "warn", "Press to wake");
+      if (navigator.vibrate) navigator.vibrate(15);
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => { closeLid(); say("LIFT COVER"); }, LID_AUTOCLOSE_MS);
+    });
+
+    cap.addEventListener("click", () => {
+      clearTimeout(closeTimer);
+      cap.classList.add("pressed");
+      cap.disabled = true;
+      fire(cfg);
+      setTimeout(() => { cap.classList.remove("pressed"); closeLid(); }, 500);
+    });
+
+    watchStatus(cfg);
+  }
+
+  function startSetup() {
+    $("setup").hidden = false;
+    $("setup").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      try {
+        const { topic, message } = parseWakeLink($("wakeLink").value);
+        const cfg = { topic, message, status: $("statusTopic").value.trim() };
+        saveConfig(cfg);
+        $("setup").hidden = true;
+        startPanel(cfg);
+      } catch (err) {
+        $("setupErr").textContent = err.message;
+      }
+    });
+  }
+
+  const cfg = loadConfig();
+  cfg && cfg.topic && cfg.message ? startPanel(cfg) : startSetup();
+})();
+</script>
+</body>
+</html>
